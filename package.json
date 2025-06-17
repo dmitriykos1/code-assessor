@@ -1,0 +1,58 @@
+{
+    "name": "code-assessor",
+    "displayName": "Code Assessor",
+    "version": "1.0.0",
+    "publisher": "your-name",
+    "description": "VS Code extension for code quality assessment",
+    "engines": {
+        "vscode": "^1.100.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Linters",
+        "Formatters"
+    ],
+    "main": "./out/extension.js",
+    "activationEvents": [
+        "onCommand:code-assessor.evaluate"
+    ],
+    "contributes": {
+        "commands": [
+            {
+                "command": "code-assessor.evaluate",
+                "title": "Assess Code Quality"
+            }
+        ],
+        "configuration": {
+            "title": "Code Assessor",
+            "properties": {
+                "codeAssessor.weights.syntax": {
+                    "type": "number",
+                    "default": 0.3,
+                    "description": "Weight for syntax score"
+                },
+                "codeAssessor.weights.similarity": {
+                    "type": "number",
+                    "default": 0.3,
+                    "description": "Weight for similarity score"
+                },
+                "codeAssessor.weights.tests": {
+                    "type": "number",
+                    "default": 0.4,
+                    "description": "Weight for test score"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "package": "vsce package"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.0",
+        "@types/vscode": "^1.100.0",
+        "typescript": "^5.3.3"
+    }
+}
