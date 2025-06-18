@@ -1,9 +1,9 @@
 {
     "name": "code-assessor",
     "displayName": "Code Assessor",
-    "version": "1.0.0",
-    "publisher": "your-name",
-    "description": "VS Code extension for code quality assessment",
+    "version": "1.1.0",
+    "publisher": "dkos",
+    "description": "VS Code extension for comprehensive code assessment",
     "engines": {
         "vscode": "^1.100.0"
     },
@@ -14,13 +14,23 @@
     ],
     "main": "./out/extension.js",
     "activationEvents": [
-        "onCommand:code-assessor.evaluate"
+        "onCommand:code-assessor.evaluate",
+        "onCommand:code-assessor.exportHistory",
+        "onCommand:code-assessor.viewHistory"
     ],
     "contributes": {
         "commands": [
             {
                 "command": "code-assessor.evaluate",
                 "title": "Assess Code Quality"
+            },
+            {
+                "command": "code-assessor.exportHistory",
+                "title": "Export Assessment History"
+            },
+            {
+                "command": "code-assessor.viewHistory",
+                "title": "View Assessment History"
             }
         ],
         "configuration": {
@@ -28,18 +38,23 @@
             "properties": {
                 "codeAssessor.weights.syntax": {
                     "type": "number",
-                    "default": 0.3,
+                    "default": 0.2,
                     "description": "Weight for syntax score"
                 },
                 "codeAssessor.weights.similarity": {
                     "type": "number",
-                    "default": 0.3,
+                    "default": 0.2,
                     "description": "Weight for similarity score"
                 },
                 "codeAssessor.weights.tests": {
                     "type": "number",
-                    "default": 0.4,
+                    "default": 0.3,
                     "description": "Weight for test score"
+                },
+                "codeAssessor.weights.quality": {
+                    "type": "number",
+                    "default": 0.3,
+                    "description": "Weight for code quality score"
                 }
             }
         }
@@ -53,6 +68,7 @@
     "devDependencies": {
         "@types/node": "^20.11.0",
         "@types/vscode": "^1.100.0",
-        "typescript": "^5.3.3"
+        "typescript": "^5.3.3",
+        "fast-csv": "^4.3.6"
     }
 }

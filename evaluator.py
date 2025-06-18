@@ -1,27 +1,28 @@
 import argparse
 import ast
-from difflib import SequenceMatcher
-import subprocess
+import json
 import os
+import re
+import subprocess
 import sys
+from difflib import SequenceMatcher
 
 
 def calculate_syntax_score(file_path):
-    """Check Python syntax validity"""
+    """Проверка синтаксической корректности кода"""
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             ast.parse(f.read())
         return 1.0
     except SyntaxError as e:
-        print(f"Syntax error: {e}")
         return 0.0
     except Exception as e:
-        print(f"Error reading file: {e}")
+        print(f"Ошибка синтаксического анализа: {str(e)}")
         return 0.0
 
 
 def calculate_similarity(generated_path, reference_path):
-    """Calculate code similarity score"""
+    """Вычисление сходства с эталонным решением"""
     try:
         with open(generated_path, "r", encoding="utf-8") as gen_file, open(
             reference_path, "r", encoding="utf-8"
@@ -30,59 +31,127 @@ def calculate_similarity(generated_path, reference_path):
             gen_code = gen_file.read()
             ref_code = ref_file.read()
 
-            # Normalize code for better comparison
+            # Нормализация кода для сравнения
             gen_clean = " ".join(gen_code.split())
             ref_clean = " ".join(ref_code.split())
 
             return SequenceMatcher(None, gen_clean, ref_clean).ratio()
     except Exception as e:
-        print(f"Similarity calculation error: {e}")
+        print(f"Ошибка сравнения кода: {str(e)}")
         return 0.0
 
 
 def run_tests(test_path, generated_path):
-    """Run tests using pytest and return pass rate"""
+    """Запуск тестов и расчет процента прохождения"""
     try:
-        # Create temp directory for testing
+        # Копирование решения во временный файл
         test_dir = os.path.dirname(test_path)
-        temp_solution = os.path.join(test_dir, "temp_solution.py")
+        solution_path = os.path.join(test_dir, "temp_solution.py")
 
-        # Copy solution to test directory
         with open(generated_path, "r", encoding="utf-8") as src, open(
-            temp_solution, "w", encoding="utf-8"
+            solution_path, "w", encoding="utf-8"
         ) as dest:
             dest.write(src.read())
 
-        # Run tests
+        # Запуск pytest
         result = subprocess.run(
             ["pytest", test_path], capture_output=True, text=True, timeout=30
         )
 
-        # Clean up
-        if os.path.exists(temp_solution):
-            os.remove(temp_solution)
+        # Удаление временного файла
+        if os.path.exists(solution_path):
+            os.remove(solution_path)
 
-        # Parse test results
+        # Анализ результатов
         if "passed" in result.stdout:
             passed = 0
             total = 0
             for line in result.stdout.split("\n"):
                 if "passed" in line and "failed" in line:
-                    parts = line.split()
-                    passed = int(parts[0])
-                    failed = int(parts[2]) if "failed" in parts else 0
-                    total = passed + failed
-                    break
+                    parts = re.findall(r"\d+", line)
+                    if len(parts) >= 2:
+                        passed = int(parts[0])
+                        failed = int(parts[1])
+                        total = passed + failed
+                        break
 
-            if total > 0:
-                return passed / total
+            return passed / total if total > 0 else 0.0
         return 0.0
     except subprocess.TimeoutExpired:
-        print("Tests timed out after 30 seconds")
+        print("Тесты не завершились вовремя")
         return 0.0
     except Exception as e:
-        print(f"Test execution error: {e}")
+        print(f"Ошибка выполнения тестов: {str(e)}")
         return 0.0
+
+
+def calculate_code_quality(file_path):
+    """Оценка качества кода с помощью Flake8 и Pylint"""
+    try:
+        # Проверка Flake8
+        flake8_result = subprocess.run(
+            ["flake8", "--format=%(row)d:%(col)d:%(code)s:%(text)s", file_path],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+
+        flake8_errors = []
+        if flake8_result.stdout:
+            flake8_errors = [
+                line.strip()
+                for line in flake8_result.stdout.split("\n")
+                if line.strip()
+            ]
+
+        # Проверка Pylint
+        pylint_result = subprocess.run(
+            ["pylint", "--output-format=json", file_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        pylint_errors = []
+        if pylint_result.stdout:
+            try:
+                pylint_data = json.loads(pylint_result.stdout)
+                pylint_errors = [
+                    f"{item['line']}:{item['column']}: {item['symbol']}: {item['message']}"
+                    for item in pylint_data
+                    if item["type"] in ["error", "warning", "convention", "refactor"]
+                ]
+            except json.JSONDecodeError:
+                pass
+
+        # Подсчет ошибок
+        total_errors = len(flake8_errors) + len(pylint_errors)
+
+        # Генерация отчета
+        report_lines = []
+        report_lines.append("=== Flake8 Issues ===")
+        report_lines.extend(flake8_errors or ["Нет проблем"])
+
+        report_lines.append("\n=== Pylint Issues ===")
+        report_lines.extend(pylint_errors or ["Нет проблем"])
+
+        quality_report = "\n".join(report_lines)
+
+        # Расчет оценки качества (чем меньше ошибок, тем выше оценка)
+        if total_errors == 0:
+            return 1.0, quality_report
+        elif total_errors <= 5:
+            return 0.8, quality_report
+        elif total_errors <= 10:
+            return 0.6, quality_report
+        elif total_errors <= 20:
+            return 0.4, quality_report
+        else:
+            return 0.2, quality_report
+
+    except Exception as e:
+        print(f"Ошибка оценки качества: {str(e)}")
+        return 0.5, "Не удалось выполнить оценку качества"
 
 
 def main():
@@ -96,46 +165,54 @@ def main():
     parser.add_argument("--tests", required=True, help="Path to test file")
     parser.add_argument(
         "--weights",
-        default="0.3,0.3,0.4",
-        help="Comma-separated weights for syntax, similarity, tests",
+        default="0.2,0.2,0.3,0.3",
+        help="Comma-separated weights for syntax, similarity, tests, quality",
     )
     args = parser.parse_args()
 
     try:
-        # Parse weights
-        weights = [float(w) for w in args.weights.split(",")]
-        if len(weights) != 3 or abs(sum(weights) - 1.0) > 0.01:
-            weights = [0.3, 0.3, 0.4]
-            print("Invalid weights. Using defaults: 0.3, 0.3, 0.4")
+        # Проверка существования файлов
+        for file_path in [args.generated, args.reference, args.tests]:
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"Файл не найден: {file_path}")
 
-        # Calculate scores
+        # Парсинг весов
+        weights = [float(w) for w in args.weights.split(",")]
+        if len(weights) != 4 or abs(sum(weights) - 1.0) > 0.01:
+            weights = [0.2, 0.2, 0.3, 0.3]
+            print("Используются веса по умолчанию: 0.2, 0.2, 0.3, 0.3")
+
+        # Расчет метрик
         syntax_score = calculate_syntax_score(args.generated)
         similarity_score = calculate_similarity(args.generated, args.reference)
         test_score = run_tests(args.tests, args.generated)
+        quality_score, quality_report = calculate_code_quality(args.generated)
 
-        # Calculate final score
+        # Расчет итоговой оценки
         final_score = (
             weights[0] * syntax_score
             + weights[1] * similarity_score
             + weights[2] * test_score
+            + weights[3] * quality_score
         )
 
-        # Format results
+        # Форматирование результатов
         results = [
-            "Code Assessment Results",
-            "=======================",
-            f"Syntax Check:    {syntax_score:.2f}/1.0",
-            f"Code Similarity: {similarity_score:.2f}/1.0",
-            f"Tests Pass Rate: {test_score:.2f}/1.0",
-            "-----------------------",
-            f"FINAL SCORE:     {final_score:.2f}/1.0",
-            "=======================",
-            f"Assessment completed successfully",
+            f"Syntax Score: {syntax_score:.4f}",
+            f"Similarity Score: {similarity_score:.4f}",
+            f"Test Score: {test_score:.4f}",
+            f"Quality Score: {quality_score:.4f}",
+            "--------------------------------",
+            f"FINAL SCORE: {final_score:.4f}",
+            "",
+            "QUALITY REPORT START:",
+            quality_report,
+            "QUALITY REPORT END",
         ]
 
         print("\n".join(results))
     except Exception as e:
-        print(f"Assessment failed: {str(e)}")
+        print(f"Оценка не удалась: {str(e)}")
         sys.exit(1)
 
 
