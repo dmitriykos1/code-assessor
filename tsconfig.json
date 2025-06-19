@@ -14,6 +14,6 @@
         "forceConsistentCasingInFileNames": true,
         "types": [
             "node"
-        ] // Добавьте эту строку
+        ]
     }
 }
